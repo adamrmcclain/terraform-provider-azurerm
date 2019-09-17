@@ -29,13 +29,10 @@ func resourceArmLinuxVirtualMachineScaleSet() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-				// The value must not be empty.
-				// The value can only contain alphanumeric characters and cannot start with a number.
-				// Azure resource names cannot contain special characters \/""[]:|<>+=;,?*@& or begin with '_' or end with '.' or '-'
-				// The value must be between 1 and 64 characters long.
+				Type:         schema.TypeString,
+				Required:     true,
+				ForceNew:     true,
+				ValidateFunc: computeSvc.ValidateLinuxName,
 			},
 
 			"resource_group_name": azure.SchemaResourceGroupName(),
@@ -79,9 +76,12 @@ func resourceArmLinuxVirtualMachineScaleSet() *schema.Resource {
 			"computer_name_prefix": {
 				// TODO: could we make this optional & default this from the VMSS name, perhaps?
 				Type:     schema.TypeString,
-				Required: true,
-				// TODO: Computer name prefixes must be 1 to 15 characters long.
-				ValidateFunc: validate.NoEmptyStrings,
+				Optional: true,
+				Computed: true,
+				// TODO: does this want to be ForceNew?
+				// note: whilst the portal says 1-15 characters it seems to mirror the rules for the vm name
+				// (e.g. 1-15 for Windows, 1-63 for Linux)
+				ValidateFunc: computeSvc.ValidateLinuxName,
 			},
 
 			"disable_password_authentication": {
@@ -228,6 +228,7 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 	sshKeysRaw := d.Get("admin_ssh_key").(*schema.Set).List()
 	sshKeys := computeSvc.ExpandSSHKeys(sshKeysRaw)
 
+	// TODO: we should be able to default UpgradeMode to manual
 	upgradePolicyRaw := d.Get("upgrade_policy").([]interface{})
 	upgradePolicy, err := computeSvc.ExpandVirtualMachineScaleSetUpgradePolicy(upgradePolicyRaw)
 	if err != nil {
@@ -237,11 +238,18 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 	zonesRaw := d.Get("zones").([]interface{})
 	zones := azure.ExpandZones(zonesRaw)
 
+	var computerNamePrefix string
+	if v, ok := d.GetOk("computer_name_prefix"); ok && len(v.(string)) > 0 {
+		computerNamePrefix = v.(string)
+	} else {
+		computerNamePrefix = name
+	}
+
 	virtualMachineProfile := compute.VirtualMachineScaleSetVMProfile{
 		Priority: compute.VirtualMachinePriorityTypes(d.Get("priority").(string)),
 		OsProfile: &compute.VirtualMachineScaleSetOSProfile{
 			AdminUsername:      utils.String(d.Get("admin_username").(string)),
-			ComputerNamePrefix: utils.String(d.Get("computer_name_prefix").(string)),
+			ComputerNamePrefix: utils.String(computerNamePrefix),
 			LinuxConfiguration: &compute.LinuxConfiguration{
 				DisablePasswordAuthentication: utils.Bool(d.Get("disable_password_authentication").(bool)),
 				ProvisionVMAgent:              utils.Bool(d.Get("provision_vm_agent").(bool)),
