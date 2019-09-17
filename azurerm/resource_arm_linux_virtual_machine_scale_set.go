@@ -475,6 +475,25 @@ func resourceArmLinuxVirtualMachineScaleSetRead(d *schema.ResourceData, meta int
 }
 
 func resourceArmLinuxVirtualMachineScaleSetDelete(d *schema.ResourceData, meta interface{}) error {
-	// TODO: implement me
+	client := meta.(*ArmClient).compute.VMScaleSetClient
+	ctx := meta.(*ArmClient).StopContext
+
+	id, err := computeSvc.ParseVirtualMachineScaleSetResourceID(d.Id())
+	if err != nil {
+		return err
+	}
+
+	name := id.Name
+	resourceGroup := id.Base.ResourceGroup
+
+	future, err := client.Delete(ctx, resourceGroup, name)
+	if err != nil {
+		return fmt.Errorf("Error deleting Linux Virtual Machine Scale Set %q (Resource Group %q): %+v", name, resourceGroup, err)
+	}
+
+	if err := future.WaitForCompletionRef(ctx, client.Client); err != nil {
+		return fmt.Errorf("Error waiting for deletion of Linux Virtual Machine Scale Set %q (Resource Group %q): %+v", name, resourceGroup, err)
+	}
+
 	return nil
 }
