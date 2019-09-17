@@ -363,7 +363,24 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 }
 
 func resourceArmLinuxVirtualMachineScaleSetUpdate(d *schema.ResourceData, meta interface{}) error {
-	// TODO: implement me
+	//client := meta.(*ArmClient).compute.VMScaleSetClient
+	//ctx := meta.(*ArmClient).StopContext
+	//
+	//id, err := computeSvc.ParseVirtualMachineScaleSetResourceID(d.Id())
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//name := id.Name
+	//resourceGroup := id.Base.ResourceGroup
+
+	// TODO: delta updates
+
+	// TODO: if rolling the image and there's a manual healthcheck should we cycle this here? flag?
+	// client.Reimage()
+	// ConvertToSinglePlacementGroup
+	// if we update the Sku we also need to roll the instances via `UpdateInstances`
+
 	return resourceArmLinuxVirtualMachineScaleSetRead(d, meta)
 }
 
