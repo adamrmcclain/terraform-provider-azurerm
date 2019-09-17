@@ -623,63 +623,6 @@ func FlattenVirtualMachineScaleSetOSDisk(input *compute.VirtualMachineScaleSetOS
 	}
 }
 
-func VirtualMachineScaleSetSkuSchema() *schema.Schema {
-	return &schema.Schema{
-		Type:     schema.TypeList,
-		Required: true,
-		MaxItems: 1,
-		Elem: &schema.Resource{
-			Schema: map[string]*schema.Schema{
-				"name": {
-					Type:         schema.TypeString,
-					Required:     true,
-					ValidateFunc: validate.NoEmptyStrings,
-				},
-
-				"capacity": {
-					Type:         schema.TypeInt,
-					Required:     true,
-					ValidateFunc: validation.IntAtLeast(0),
-				},
-			},
-		},
-	}
-}
-
-func ExpandVirtualMachineScaleSetSku(input []interface{}) *compute.Sku {
-	raw := input[0].(map[string]interface{})
-	return &compute.Sku{
-		Name:     utils.String(raw["name"].(string)),
-		Capacity: utils.Int64(int64(raw["capacity"].(int))),
-
-		// this appears to be fixed
-		Tier: utils.String("Standard"),
-	}
-}
-
-func FlattenVirtualMachineScaleSetSku(input *compute.Sku) []interface{} {
-	if input == nil {
-		return []interface{}{}
-	}
-
-	capacity := 0
-	if input.Capacity != nil {
-		capacity = int(*input.Capacity)
-	}
-
-	name := ""
-	if input.Name != nil {
-		name = *input.Name
-	}
-
-	return []interface{}{
-		map[string]interface{}{
-			"capacity": capacity,
-			"name":     name,
-		},
-	}
-}
-
 func VirtualMachineScaleSetSourceImageReferenceSchema() *schema.Schema {
 	// whilst originally I was hoping we could use the 'id' from `azurerm_platform_image' unfortunately Azure doesn't
 	// like this as a value for the 'id' field:

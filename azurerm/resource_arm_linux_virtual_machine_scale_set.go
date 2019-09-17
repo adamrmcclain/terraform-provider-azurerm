@@ -53,7 +53,17 @@ func resourceArmLinuxVirtualMachineScaleSet() *schema.Resource {
 
 			"os_disk": computeSvc.VirtualMachineScaleSetOSDiskSchema(),
 
-			"sku": computeSvc.VirtualMachineScaleSetSkuSchema(),
+			"instances": {
+				Type:         schema.TypeInt,
+				Required:     true,
+				ValidateFunc: validation.IntAtLeast(0),
+			},
+
+			"sku": {
+				Type:         schema.TypeString,
+				Required:     true,
+				ValidateFunc: validate.NoEmptyStrings,
+			},
 
 			// Optional
 			"additional_capabilities": computeSvc.VirtualMachineScaleSetAdditionalCapabilitiesSchema(),
@@ -202,9 +212,6 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 	osDiskRaw := d.Get("os_disk").([]interface{})
 	osDisk := computeSvc.ExpandVirtualMachineScaleSetOSDisk(osDiskRaw, compute.Linux)
 
-	skuRaw := d.Get("sku").([]interface{})
-	sku := computeSvc.ExpandVirtualMachineScaleSetSku(skuRaw)
-
 	sourceImageReferenceRaw := d.Get("source_image_reference").([]interface{})
 	sourceImageReference := computeSvc.ExpandVirtualMachineScaleSetSourceImageReference(sourceImageReferenceRaw)
 	if sourceImageReference == nil {
@@ -283,8 +290,14 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 	props := compute.VirtualMachineScaleSet{
 		// TODO: Identity, Plan
 		Location: utils.String(location),
-		Sku:      sku,
-		Tags:     tags.Expand(t),
+		Sku: &compute.Sku{
+			Name:     utils.String(d.Get("sku").(string)),
+			Capacity: utils.Int64(int64(d.Get("instances").(int))),
+
+			// doesn't appear this can be set to anything else, even Promo machines are Standard
+			Tier: utils.String("Standard"),
+		},
+		Tags: tags.Expand(t),
 		VirtualMachineScaleSetProperties: &compute.VirtualMachineScaleSetProperties{
 			AdditionalCapabilities:                 additionalCapabilities,
 			DoNotRunExtensionsOnOverprovisionedVMs: utils.Bool(d.Get("do_not_run_extensions_on_overprovisioned_machines").(bool)),
@@ -375,16 +388,21 @@ func resourceArmLinuxVirtualMachineScaleSetRead(d *schema.ResourceData, meta int
 		d.Set("location", azure.NormalizeLocation(*location))
 	}
 
-	if err := d.Set("sku", computeSvc.FlattenVirtualMachineScaleSetSku(resp.Sku)); err != nil {
-		return fmt.Errorf("Error setting `sku`: %+v", err)
+	var skuName *string
+	var instances int
+	if resp.Sku != nil {
+		skuName = resp.Sku.Name
+		if resp.Sku.Capacity != nil {
+			instances = int(*resp.Sku.Capacity)
+		}
 	}
+	d.Set("instances", instances)
+	d.Set("sku", skuName)
 
 	if resp.VirtualMachineScaleSetProperties == nil {
 		return fmt.Errorf("Error retrieving Linux Virtual Machine Scale Set %q (Resource Group %q): `properties` was nil", name, resourceGroup)
 	}
 	props := *resp.VirtualMachineScaleSetProperties
-
-	// TODO: if this isn't a Linux Scale Set we should error here
 
 	if err := d.Set("additional_capabilities", computeSvc.FlattenVirtualMachineScaleSetAdditionalCapabilities(props.AdditionalCapabilities)); err != nil {
 		return fmt.Errorf("Error setting `additional_capabilities`: %+v", props.AdditionalCapabilities)
