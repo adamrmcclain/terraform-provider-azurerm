@@ -114,6 +114,7 @@ func resourceArmLinuxVirtualMachineScaleSet() *schema.Resource {
 				Default:  false,
 			},
 
+			// TODO: if this is only applicable for Availability Set should we ditch it?
 			"platform_fault_domain_count": {
 				Type:     schema.TypeInt,
 				Optional: true,
