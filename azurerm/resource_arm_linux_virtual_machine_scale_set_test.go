@@ -1,6 +1,12 @@
 package azurerm
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/hashicorp/terraform/helper/resource"
+	"github.com/hashicorp/terraform/terraform"
+	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/utils"
+)
 
 func testCheckAzureRMLinuxVirtualMachineScaleSetDestroy(s *terraform.State) error {
 	client := testAccProvider.Meta().(*ArmClient).compute.VMScaleSetClient

@@ -1,6 +1,12 @@
 package azurerm
 
-import "fmt"
+import (
+	"fmt"
+	"testing"
+
+	"github.com/hashicorp/terraform/helper/resource"
+	"github.com/terraform-providers/terraform-provider-azurerm/azurerm/helpers/tf"
+)
 
 func TestAccAzureRMLinuxVirtualMachineScaleSet_authPassword(t *testing.T) {
 	resourceName := "azurerm_linux_virtual_machine_scale_set.test"
