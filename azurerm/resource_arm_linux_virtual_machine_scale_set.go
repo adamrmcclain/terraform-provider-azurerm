@@ -171,7 +171,7 @@ func resourceArmLinuxVirtualMachineScaleSet() *schema.Resource {
 			},
 
 			// TODO: sort these
-			"automated_os_upgrade_policy": computeSvc.VirtualMachineScaleSetAutomatedOSUpgradePolicySchema(),
+			"automatic_os_upgrade_policy": computeSvc.VirtualMachineScaleSetAutomatedOSUpgradePolicySchema(),
 
 			"rolling_upgrade_policy": computeSvc.VirtualMachineScaleSetRollingUpgradePolicySchema(),
 
