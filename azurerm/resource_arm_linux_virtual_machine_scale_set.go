@@ -175,7 +175,7 @@ func resourceArmLinuxVirtualMachineScaleSet() *schema.Resource {
 
 			"rolling_upgrade_policy": computeSvc.VirtualMachineScaleSetRollingUpgradePolicySchema(),
 
-			"zero_balance": {
+			"zone_balance": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
@@ -350,9 +350,9 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 		props.VirtualMachineScaleSetProperties.PlatformFaultDomainCount = utils.Int32(int32(v))
 	}
 
-	if v, ok := d.GetOk("zero_balance"); ok && v.(bool) {
+	if v, ok := d.GetOk("zone_balance"); ok && v.(bool) {
 		if len(zonesRaw) == 0 {
-			return fmt.Errorf("`zero_balance` can only be set to `true` when zones are specified")
+			return fmt.Errorf("`zone_balance` can only be set to `true` when zones are specified")
 		}
 
 		props.VirtualMachineScaleSetProperties.ZoneBalance = utils.Bool(v.(bool))
