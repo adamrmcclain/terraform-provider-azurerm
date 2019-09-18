@@ -131,17 +131,17 @@ func TestAccAzureRMLinuxVirtualMachineScaleSet_authUpdatingSSHKeys(t *testing.T)
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
-				{
-					Config: testAccAzureRMLinuxVirtualMachineScaleSet_authSSHKeyUpdated(ri, location),
-					Check: resource.ComposeTestCheckFunc(
-						testCheckAzureRMLinuxVirtualMachineScaleSetExists(resourceName),
-					),
-				},
-				{
-					ResourceName:      resourceName,
-					ImportState:       true,
-					ImportStateVerify: true,
-				},
+			{
+				Config: testAccAzureRMLinuxVirtualMachineScaleSet_authSSHKeyUpdated(ri, location),
+				Check: resource.ComposeTestCheckFunc(
+					testCheckAzureRMLinuxVirtualMachineScaleSetExists(resourceName),
+				),
+			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
 		},
 	})
 }
