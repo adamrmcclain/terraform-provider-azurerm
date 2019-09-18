@@ -701,175 +701,148 @@ func FlattenVirtualMachineScaleSetSourceImageReference(input *compute.ImageRefer
 	}
 }
 
-func VirtualMachineScaleSetUpgradePolicySchema() *schema.Schema {
+func VirtualMachineScaleSetAutomatedOSUpgradePolicySchema() *schema.Schema {
 	return &schema.Schema{
 		Type:     schema.TypeList,
-		Required: true,
+		Optional: true,
 		MaxItems: 1,
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
-				"mode": {
-					Type:     schema.TypeString,
+				// TODO: should these be optional + defaulted?
+				"disable_automatic_rollback": {
+					Type:     schema.TypeBool,
 					Required: true,
-					ValidateFunc: validation.StringInSlice([]string{
-						string(compute.Automatic),
-						string(compute.Manual),
-						string(compute.Rolling),
-					}, false),
 				},
-
-				"automatic_os_upgrade_policy": {
-					Type:     schema.TypeList,
-					Optional: true,
-					MaxItems: 1,
-					Elem: &schema.Resource{
-						Schema: map[string]*schema.Schema{
-							// TODO: should these be optional + defaulted?
-							"disable_automatic_rollback": {
-								Type:     schema.TypeBool,
-								Required: true,
-							},
-							"enable_automatic_os_upgrade": {
-								Type:     schema.TypeBool,
-								Required: true,
-							},
-						},
-					},
-				},
-
-				"rolling_upgrade_policy": {
-					Type:     schema.TypeList,
-					Optional: true,
-					MaxItems: 1,
-					Elem: &schema.Resource{
-						Schema: map[string]*schema.Schema{
-							"max_batch_instance_percent": {
-								Type:     schema.TypeInt,
-								Required: true,
-							},
-							"max_unhealthy_instance_percent": {
-								Type:     schema.TypeInt,
-								Required: true,
-							},
-							"max_unhealthy_upgraded_instance_percent": {
-								Type:     schema.TypeInt,
-								Required: true,
-							},
-							"pause_time_between_batches": {
-								Type:     schema.TypeString,
-								Required: true,
-							},
-						},
-					},
+				"enable_automatic_os_upgrade": {
+					Type:     schema.TypeBool,
+					Required: true,
 				},
 			},
 		},
 	}
 }
 
-func ExpandVirtualMachineScaleSetUpgradePolicy(input []interface{}) (*compute.UpgradePolicy, error) {
-	raw := input[0].(map[string]interface{})
-	automaticPoliciesRaw := raw["automatic_os_upgrade_policy"].([]interface{})
-	rollingPoliciesRaw := raw["rolling_upgrade_policy"].([]interface{})
-
-	policy := compute.UpgradePolicy{
-		Mode: compute.UpgradeMode(raw["mode"].(string)),
+func VirtualMachineScaleSetRollingUpgradePolicySchema() *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeList,
+		Optional: true,
+		MaxItems: 1,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				// whilst this isn't present in the nested object it's required when this is specified
+				"health_probe_id": {
+					Type:         schema.TypeInt,
+					Required:     true,
+					ValidateFunc: azure.ValidateResourceID,
+				},
+				"max_batch_instance_percent": {
+					Type:     schema.TypeInt,
+					Required: true,
+				},
+				"max_unhealthy_instance_percent": {
+					Type:     schema.TypeInt,
+					Required: true,
+				},
+				"max_unhealthy_upgraded_instance_percent": {
+					Type:     schema.TypeInt,
+					Required: true,
+				},
+				"pause_time_between_batches": {
+					Type:     schema.TypeString,
+					Required: true,
+				},
+			},
+		},
 	}
-
-	if len(automaticPoliciesRaw) > 0 {
-		if policy.Mode != compute.Automatic {
-			return nil, fmt.Errorf("A `automatic_os_upgrade_policy` block cannot be specified when `mode` is not set to `Automatic`")
-		}
-
-		automaticRaw := automaticPoliciesRaw[0].(map[string]interface{})
-		policy.AutomaticOSUpgradePolicy = &compute.AutomaticOSUpgradePolicy{
-			DisableAutomaticRollback: utils.Bool(automaticRaw["disable_automatic_rollback"].(bool)),
-			EnableAutomaticOSUpgrade: utils.Bool(automaticRaw["enable_automatic_os_upgrade"].(bool)),
-		}
-	}
-
-	if len(rollingPoliciesRaw) > 0 {
-		if policy.Mode != compute.Rolling {
-			return nil, fmt.Errorf("A `rolling_upgrade_policy` block cannot be specified when `mode` is not set to `Rolling`")
-		}
-
-		rollingRaw := rollingPoliciesRaw[0].(map[string]interface{})
-		policy.RollingUpgradePolicy = &compute.RollingUpgradePolicy{
-			MaxBatchInstancePercent:             utils.Int32(int32(rollingRaw["max_batch_instance_percent"].(int))),
-			MaxUnhealthyInstancePercent:         utils.Int32(int32(rollingRaw["max_unhealthy_instance_percent"].(int))),
-			MaxUnhealthyUpgradedInstancePercent: utils.Int32(int32(rollingRaw["max_unhealthy_upgraded_instance_percent"].(int))),
-			PauseTimeBetweenBatches:             utils.String(rollingRaw["pause_time_between_batches"].(string)),
-		}
-	}
-
-	if policy.Mode == compute.Automatic && policy.AutomaticOSUpgradePolicy == nil {
-		return nil, fmt.Errorf("A `automatic_os_upgrade_policy` block must be specified when `mode` is set to `Automatic`")
-	}
-
-	if policy.Mode == compute.Rolling && policy.RollingUpgradePolicy == nil {
-		return nil, fmt.Errorf("A `rolling_upgrade_policy` block must be specified when `mode` is set to `Rolling`")
-	}
-
-	return &policy, nil
 }
 
-func FlattenVirtualMachineScaleSetUpgradePolicy(input *compute.UpgradePolicy) []interface{} {
+func ExpandVirtualMachineScaleSetAutomaticUpgradePolicy(input []interface{}) *compute.AutomaticOSUpgradePolicy {
+	raw := input[0].(map[string]interface{})
+	return &compute.AutomaticOSUpgradePolicy{
+		DisableAutomaticRollback: utils.Bool(raw["disable_automatic_rollback"].(bool)),
+		EnableAutomaticOSUpgrade: utils.Bool(raw["enable_automatic_os_upgrade"].(bool)),
+	}
+}
+
+type VirtualMachineScaleSetExpandedUpgradePolicy struct {
+	HealthProbeID string
+	UpgradePolicy compute.RollingUpgradePolicy
+}
+
+func ExpandVirtualMachineScaleSetRollingUpgradePolicy(input []interface{}) *VirtualMachineScaleSetExpandedUpgradePolicy {
+	raw := input[0].(map[string]interface{})
+
+	return &VirtualMachineScaleSetExpandedUpgradePolicy{
+		HealthProbeID: raw["health_probe_id"].(string),
+		UpgradePolicy: compute.RollingUpgradePolicy{
+			MaxBatchInstancePercent:             utils.Int32(int32(raw["max_batch_instance_percent"].(int))),
+			MaxUnhealthyInstancePercent:         utils.Int32(int32(raw["max_unhealthy_instance_percent"].(int))),
+			MaxUnhealthyUpgradedInstancePercent: utils.Int32(int32(raw["max_unhealthy_upgraded_instance_percent"].(int))),
+			PauseTimeBetweenBatches:             utils.String(raw["pause_time_between_batches"].(string)),
+		},
+	}
+}
+
+func FlattenVirtualMachineScaleSetAutomaticOSUpgradePolicy(input *compute.AutomaticOSUpgradePolicy) []interface{} {
 	if input == nil {
 		return []interface{}{}
 	}
 
-	automaticOutput := make([]interface{}, 0)
-	if policy := input.AutomaticOSUpgradePolicy; policy != nil {
-		disableAutomaticRollback := false
-		enableAutomaticOSUpgrade := false
-
-		if policy.DisableAutomaticRollback != nil {
-			disableAutomaticRollback = *policy.DisableAutomaticRollback
-		}
-
-		if policy.EnableAutomaticOSUpgrade != nil {
-			enableAutomaticOSUpgrade = *policy.EnableAutomaticOSUpgrade
-		}
-
-		automaticOutput = append(automaticOutput, map[string]interface{}{
-			"disable_automatic_rollback":  disableAutomaticRollback,
-			"enable_automatic_os_upgrade": enableAutomaticOSUpgrade,
-		})
+	disableAutomaticRollback := false
+	if input.DisableAutomaticRollback != nil {
+		disableAutomaticRollback = *input.DisableAutomaticRollback
 	}
 
-	rollingOutput := make([]interface{}, 0)
-	if policy := input.RollingUpgradePolicy; policy != nil {
-		maxBatchInstancePercent := 0
-		maxUnhealthyInstancePercent := 0
-		maxUnhealthyUpgradedInstancePercent := 0
-		pauseTimeBetweenBatches := ""
-
-		if policy.MaxBatchInstancePercent != nil {
-			maxBatchInstancePercent = int(*policy.MaxBatchInstancePercent)
-		}
-		if policy.MaxUnhealthyInstancePercent != nil {
-			maxUnhealthyInstancePercent = int(*policy.MaxUnhealthyInstancePercent)
-		}
-		if policy.MaxUnhealthyUpgradedInstancePercent != nil {
-			maxUnhealthyUpgradedInstancePercent = int(*policy.MaxUnhealthyUpgradedInstancePercent)
-		}
-		if policy.PauseTimeBetweenBatches != nil {
-			pauseTimeBetweenBatches = *policy.PauseTimeBetweenBatches
-		}
-
-		rollingOutput = append(rollingOutput, map[string]interface{}{
-			"max_batch_instance_percent":              maxBatchInstancePercent,
-			"max_unhealthy_instance_percent":          maxUnhealthyInstancePercent,
-			"max_unhealthy_upgraded_instance_percent": maxUnhealthyUpgradedInstancePercent,
-			"pause_time_between_batches":              pauseTimeBetweenBatches,
-		})
+	enableAutomaticOSUpgrade := false
+	if input.EnableAutomaticOSUpgrade != nil {
+		enableAutomaticOSUpgrade = *input.EnableAutomaticOSUpgrade
 	}
 
 	return []interface{}{
 		map[string]interface{}{
-			"mode":                        string(input.Mode),
-			"automatic_os_upgrade_policy": automaticOutput,
-			"rolling_upgrade_policy":      rollingOutput,
+			"disable_automatic_rollback":  disableAutomaticRollback,
+			"enable_automatic_os_upgrade": enableAutomaticOSUpgrade,
+		},
+	}
+}
+
+func FlattenVirtualMachineScaleSetRollingUpgradePolicy(input *compute.RollingUpgradePolicy, healthProbeId *string) []interface{} {
+	if input == nil {
+		return []interface{}{}
+	}
+
+	healthProbe := ""
+	if healthProbeId != nil {
+		healthProbe = *healthProbeId
+	}
+
+	maxBatchInstancePercent := 0
+	if input.MaxBatchInstancePercent != nil {
+		maxBatchInstancePercent = int(*input.MaxBatchInstancePercent)
+	}
+
+	maxUnhealthyInstancePercent := 0
+	if input.MaxUnhealthyInstancePercent != nil {
+		maxUnhealthyInstancePercent = int(*input.MaxUnhealthyInstancePercent)
+	}
+
+	maxUnhealthyUpgradedInstancePercent := 0
+	if input.MaxUnhealthyUpgradedInstancePercent != nil {
+		maxUnhealthyUpgradedInstancePercent = int(*input.MaxUnhealthyUpgradedInstancePercent)
+	}
+
+	pauseTimeBetweenBatches := ""
+	if input.PauseTimeBetweenBatches != nil {
+		pauseTimeBetweenBatches = *input.PauseTimeBetweenBatches
+	}
+
+	return []interface{}{
+		map[string]interface{}{
+			"health_probe_id":                         healthProbe,
+			"max_batch_instance_percent":              maxBatchInstancePercent,
+			"max_unhealthy_instance_percent":          maxUnhealthyInstancePercent,
+			"max_unhealthy_upgraded_instance_percent": maxUnhealthyUpgradedInstancePercent,
+			"pause_time_between_batches":              pauseTimeBetweenBatches,
 		},
 	}
 }

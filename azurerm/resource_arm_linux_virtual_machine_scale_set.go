@@ -22,10 +22,11 @@ func resourceArmLinuxVirtualMachineScaleSet() *schema.Resource {
 		Read:   resourceArmLinuxVirtualMachineScaleSetRead,
 		Update: resourceArmLinuxVirtualMachineScaleSetUpdate,
 		Delete: resourceArmLinuxVirtualMachineScaleSetDelete,
-
 		Importer: &schema.ResourceImporter{
 			State: schema.ImportStatePassthrough,
 		},
+
+		// TODO: exposing requireGuestProvisionSignal in the swagger
 
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -157,11 +158,21 @@ func resourceArmLinuxVirtualMachineScaleSet() *schema.Resource {
 
 			"tags": tags.Schema(),
 
-			// TODO: find & set me
-			// should this be inside the `rolling_upgrade_policy` block?
-			//   # required when using rolling upgrade policy
-			//  health_probe_id = "${azurerm_lb_probe.test.id}"
-			"upgrade_policy": computeSvc.VirtualMachineScaleSetUpgradePolicySchema(),
+			"upgrade_mode": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Default:  string(compute.Manual),
+				ValidateFunc: validation.StringInSlice([]string{
+					string(compute.Automatic),
+					string(compute.Manual),
+					string(compute.Rolling),
+				}, false),
+			},
+
+			// TODO: sort these
+			"automated_os_upgrade_policy": computeSvc.VirtualMachineScaleSetAutomatedOSUpgradePolicySchema(),
+
+			"rolling_upgrade_policy": computeSvc.VirtualMachineScaleSetRollingUpgradePolicySchema(),
 
 			"zero_balance": {
 				Type:     schema.TypeBool,
@@ -228,11 +239,23 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 	sshKeysRaw := d.Get("admin_ssh_key").(*schema.Set).List()
 	sshKeys := computeSvc.ExpandSSHKeys(sshKeysRaw)
 
-	// TODO: we should be able to default UpgradeMode to manual
-	upgradePolicyRaw := d.Get("upgrade_policy").([]interface{})
-	upgradePolicy, err := computeSvc.ExpandVirtualMachineScaleSetUpgradePolicy(upgradePolicyRaw)
-	if err != nil {
-		return fmt.Errorf("Error expanding `upgrade_policy`: %+v", err)
+	upgradeMode := compute.UpgradeMode(d.Get("upgrade_mode").(string))
+	automaticOSUpgradePolicyRaw := d.Get("automatic_os_upgrade_policy").([]interface{})
+	automaticOSUpgradePolicy := computeSvc.ExpandVirtualMachineScaleSetAutomaticUpgradePolicy(automaticOSUpgradePolicyRaw)
+	if len(automaticOSUpgradePolicyRaw) > 0 && upgradeMode != compute.Automatic {
+		return fmt.Errorf("An `automatic_os_upgrade_policy` block cannot be specified when `upgrade_mode` is not set to `Automatic`")
+	}
+	if upgradeMode == compute.Automatic && len(automaticOSUpgradePolicyRaw) == 0 {
+		return fmt.Errorf("An `automatic_os_upgrade_policy` block must be specified when `upgrade_mode` is set to `Automatic`")
+	}
+
+	rollingUpgradePolicyRaw := d.Get("rolling_upgrade_policy").([]interface{})
+	rollingUpgradePolicy := computeSvc.ExpandVirtualMachineScaleSetRollingUpgradePolicy(rollingUpgradePolicyRaw)
+	if len(rollingUpgradePolicyRaw) > 0 && upgradeMode != compute.Rolling {
+		return fmt.Errorf("A `rolling_upgrade_policy` block cannot be specified when `upgrade_mode` is not set to `Rolling`")
+	}
+	if upgradeMode == compute.Rolling && len(rollingUpgradePolicyRaw) == 0 {
+		return fmt.Errorf("A `rolling_upgrade_policy` block must be specified when `upgrade_mode` is set to `Rolling`")
 	}
 
 	zonesRaw := d.Get("zones").([]interface{})
@@ -244,6 +267,22 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 	} else {
 		computerNamePrefix = name
 	}
+
+	networkProfile := &compute.VirtualMachineScaleSetNetworkProfile{
+		NetworkInterfaceConfigurations: networkInterfaces,
+	}
+	upgradePolicy := compute.UpgradePolicy{
+		AutomaticOSUpgradePolicy: automaticOSUpgradePolicy,
+		Mode:                     upgradeMode,
+	}
+	if rollingUpgradePolicy != nil {
+		upgradePolicy.RollingUpgradePolicy = &rollingUpgradePolicy.UpgradePolicy
+		networkProfile.HealthProbe = &compute.APIEntityReference{
+			ID: utils.String(rollingUpgradePolicy.HealthProbeID),
+		}
+	}
+
+	dataDisks := make([]compute.VirtualMachineScaleSetDataDisk, 0)
 
 	virtualMachineProfile := compute.VirtualMachineScaleSetVMProfile{
 		Priority: compute.VirtualMachinePriorityTypes(d.Get("priority").(string)),
@@ -260,28 +299,11 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 			// TODO: customData & secrets
 		},
 		// TODO: DiagnosticsProfile:
-		NetworkProfile: &compute.VirtualMachineScaleSetNetworkProfile{
-			//HealthProbe: &compute.APIEntityReference{
-			//	// TODO: required if `Rolling` is used
-			//	ID: nil,
-			//},
-			NetworkInterfaceConfigurations: networkInterfaces,
-		},
+		NetworkProfile: networkProfile,
 		StorageProfile: &compute.VirtualMachineScaleSetStorageProfile{
 			ImageReference: sourceImageReference,
 			OsDisk:         osDisk,
-			// TODO: Data Disks
-			//DataDisks: &[]compute.VirtualMachineScaleSetDataDisk{
-			//	{
-			//		Name:                    nil,
-			//		Lun:                     nil,
-			//		Caching:                 "",
-			//		WriteAcceleratorEnabled: nil,
-			//		CreateOption:            "",
-			//		DiskSizeGB:              nil,
-			//		ManagedDisk:             nil,
-			//	},
-			//},
+			DataDisks:      &dataDisks,
 		},
 	}
 
@@ -312,7 +334,7 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 			Overprovision:                          utils.Bool(d.Get("overprovision").(bool)),
 			SinglePlacementGroup:                   utils.Bool(d.Get("single_placement_group").(bool)),
 			VirtualMachineProfile:                  &virtualMachineProfile,
-			UpgradePolicy:                          upgradePolicy,
+			UpgradePolicy:                          &upgradePolicy,
 		},
 		Zones: zones,
 	}
@@ -442,11 +464,9 @@ func resourceArmLinuxVirtualMachineScaleSetRead(d *schema.ResourceData, meta int
 	}
 	d.Set("single_placement_group", props.SinglePlacementGroup)
 	d.Set("unique_id", props.UniqueID)
-	if err := d.Set("upgrade_policy", computeSvc.FlattenVirtualMachineScaleSetUpgradePolicy(props.UpgradePolicy)); err != nil {
-		return fmt.Errorf("Error setting `upgrade_policy`: %+v", props.AdditionalCapabilities)
-	}
 	d.Set("zone_balance", props.ZoneBalance)
 
+	var healthProbeId *string
 	if profile := props.VirtualMachineProfile; profile != nil {
 		if storageProfile := profile.StorageProfile; storageProfile != nil {
 			if d.Set("os_disk", computeSvc.FlattenVirtualMachineScaleSetOSDisk(storageProfile.OsDisk)); err != nil {
@@ -484,11 +504,28 @@ func resourceArmLinuxVirtualMachineScaleSetRead(d *schema.ResourceData, meta int
 		}
 
 		if nwProfile := profile.NetworkProfile; nwProfile != nil {
-			if d.Set("network_interface", computeSvc.FlattenVirtualMachineScaleSetNetworkInterface(nwProfile.NetworkInterfaceConfigurations)); err != nil {
+			flattenedNics := computeSvc.FlattenVirtualMachineScaleSetNetworkInterface(nwProfile.NetworkInterfaceConfigurations)
+			if d.Set("network_interface", flattenedNics); err != nil {
 				return fmt.Errorf("Error setting `network_interface`: %+v", err)
 			}
 
-			// TODO: other fields
+			if nwProfile.HealthProbe != nil {
+				healthProbeId = nwProfile.HealthProbe.ID
+			}
+		}
+	}
+
+	if policy := props.UpgradePolicy; policy != nil {
+		d.Set("upgrade_mode", string(policy.Mode))
+
+		flattenedAutomatic := computeSvc.FlattenVirtualMachineScaleSetAutomaticOSUpgradePolicy(policy.AutomaticOSUpgradePolicy)
+		if err := d.Set("automatic_os_upgrade_policy", flattenedAutomatic); err != nil {
+			return fmt.Errorf("Error setting `automatic_os_upgrade_policy`: %+v", err)
+		}
+
+		flattenedRolling := computeSvc.FlattenVirtualMachineScaleSetRollingUpgradePolicy(policy.RollingUpgradePolicy, healthProbeId)
+		if err := d.Set("rolling_upgrade_policy", flattenedRolling); err != nil {
+			return fmt.Errorf("Error setting `rolling_upgrade_policy`: %+v", err)
 		}
 	}
 
