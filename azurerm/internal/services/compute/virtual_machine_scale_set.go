@@ -757,6 +757,10 @@ func VirtualMachineScaleSetRollingUpgradePolicySchema() *schema.Schema {
 }
 
 func ExpandVirtualMachineScaleSetAutomaticUpgradePolicy(input []interface{}) *compute.AutomaticOSUpgradePolicy {
+	if len(input) == 0 {
+		return nil
+	}
+
 	raw := input[0].(map[string]interface{})
 	return &compute.AutomaticOSUpgradePolicy{
 		DisableAutomaticRollback: utils.Bool(raw["disable_automatic_rollback"].(bool)),
@@ -770,6 +774,10 @@ type VirtualMachineScaleSetExpandedUpgradePolicy struct {
 }
 
 func ExpandVirtualMachineScaleSetRollingUpgradePolicy(input []interface{}) *VirtualMachineScaleSetExpandedUpgradePolicy {
+	if len(input) == 0 {
+		return nil
+	}
+
 	raw := input[0].(map[string]interface{})
 
 	return &VirtualMachineScaleSetExpandedUpgradePolicy{
