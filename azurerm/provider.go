@@ -264,6 +264,7 @@ func Provider() terraform.ResourceProvider {
 		"azurerm_frontdoor":                                          resourceArmFrontDoor(),
 		"azurerm_frontdoor_firewall_policy":                          resourceArmFrontDoorFirewallPolicy(),
 		"azurerm_function_app":                                       resourceArmFunctionApp(),
+                "azurerm_function_app_slot":                                  resourceArmFunctionAppSlot(),
 		"azurerm_hdinsight_hadoop_cluster":                           resourceArmHDInsightHadoopCluster(),
 		"azurerm_hdinsight_hbase_cluster":                            resourceArmHDInsightHBaseCluster(),
 		"azurerm_hdinsight_interactive_query_cluster":                resourceArmHDInsightInteractiveQueryCluster(),
